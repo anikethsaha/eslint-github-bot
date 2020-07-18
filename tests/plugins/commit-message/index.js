@@ -190,6 +190,27 @@ describe("commit-message", () => {
                 expect(nockScope.isDone()).toBeTruthy();
             });
 
+            [
+                {
+                    commitMsg: "New: foo (fxes #3)",
+                    errCodes: ["WRONG_REF"]
+                }
+            ].forEach(({ commitMsg, errCodes }) => {
+                test("checking ", async() => {
+                    mockSingleCommitWithMessage(
+                        commitMsg
+                    );
+
+                    const nockScope = nock("https://api.github.com")
+                        .post("/repos/test/repo-test/statuses/first-sha", req => req.state === "failure" && req.description === `Commit message doesn't follow guidelines, error codes : ${errCodes.join(", ")}`)
+                        .reply(201);
+
+                    await emitBotEvent(bot, { action: "opened" });
+
+                    expect(nockScope.isDone()).toBeTruthy();
+                });
+            });
+
             // Tests for malformed issue references
             [
                 "#1",

@@ -30,13 +30,24 @@ const EXCLUDED_REPOSITORY_NAMES = new Set([
  */
 function checkCommitMessage(message) {
     const commitTitle = message.split(/\r?\n/)[0];
+    const errCode = [];
 
     if (message.startsWith("Revert \"")) {
-        return true;
+        return [true, []];
     }
 
+    let isValid = true;
+
     // First, check tag and summary length
-    let isValid = TAG_REGEX.test(commitTitle) && commitTitle.length <= MESSAGE_LENGTH_LIMIT;
+    if (!TAG_REGEX.test(commitTitle)) {
+        isValid = false;
+        errCode.push("NON_MATCHED_TAG");
+    }
+
+    if (!(commitTitle.length <= MESSAGE_LENGTH_LIMIT)) {
+        isValid = false;
+        errCode.push("LONG_MESSAGE");
+    }
 
     // Then, if there appears to be an issue reference, test for correctness
     if (isValid && POTENTIAL_ISSUE_REF_REGEX.test(commitTitle)) {
@@ -45,10 +56,11 @@ function checkCommitMessage(message) {
         // If no suffix, or issue ref occurs before suffix, message is invalid
         if (!issueSuffixMatch || POTENTIAL_ISSUE_REF_REGEX.test(commitTitle.slice(0, issueSuffixMatch.index))) {
             isValid = false;
+            errCode.push("WRONG_REF");
         }
     }
 
-    return isValid;
+    return [isValid, errCode];
 }
 
 /**
@@ -73,7 +85,7 @@ async function processCommitMessage(context) {
 
     const allCommits = await github.pullRequests.listCommits(context.issue());
     const messageToCheck = getCommitMessageForPR(allCommits.data, payload.pull_request);
-    const isValid = checkCommitMessage(messageToCheck);
+    const [isValid, errCode] = checkCommitMessage(messageToCheck);
     let description;
     let state;
 
@@ -85,8 +97,8 @@ async function processCommitMessage(context) {
     } else {
         state = "failure";
         description = allCommits.data.length === 1
-            ? "Commit message doesn't follow guidelines"
-            : "PR title doesn't follow commit message guidelines";
+            ? `Commit message doesn't follow guidelines, error codes : ${errCode.join(", ")}`
+            : `PR title doesn't follow commit message guidelines, error codes : ${errCode.join(", ")}`;
     }
 
     // only check first commit message
